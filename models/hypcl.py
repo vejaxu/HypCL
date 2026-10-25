@@ -16,6 +16,7 @@ class Learner(BaseLearner):
     def __init__(self, config, device, workers=16):
         super().__init__(config, device, workers)
         self._network = HypCLNet(config).to(self._device)
+        self.metric_logger = None
 
     def incremental_train(self, data_manager):
         self._cur_task += 1
@@ -75,6 +76,7 @@ class Learner(BaseLearner):
         ]
         templates = self.data_manager._data_to_prompt
         for epoch in range(self.config.epochs):
+            learning_rate = optimizer.param_groups[0]["lr"]
             self._network.train()
             texts = self._network.text_features(names, templates)
             loss_sum = 0.0
@@ -98,6 +100,12 @@ class Learner(BaseLearner):
                 loss_sum / len(train_loader),
                 accuracy,
             )
+            if self.metric_logger is not None:
+                self.metric_logger(
+                    task=self._cur_task + 1, epoch=epoch + 1,
+                    loss=loss_sum / len(train_loader), accuracy=accuracy,
+                    learning_rate=learning_rate, seen_classes=self._total_classes,
+                )
 
     @torch.no_grad()
     def _update_prototypes(self):

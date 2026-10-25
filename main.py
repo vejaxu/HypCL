@@ -18,6 +18,11 @@ def main():
     )
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--workers", type=int, default=16)
+    parser.add_argument("--wandb-project", default="hypcli")
+    parser.add_argument("--wandb-entity", help="Optional W&B account or team")
+    parser.add_argument("--wandb-mode", choices=("online", "offline", "disabled"),
+                        default="online")
+    parser.add_argument("--run-name", help="Optional W&B run name")
     parser.add_argument(
         "--download", action="store_true", help="Allow downloading CIFAR100"
     )
@@ -30,7 +35,9 @@ def main():
     )
     from trainer import train
 
-    train(config, args.data_root, output, args.device, args.workers, args.download)
+    train(config, args.data_root, output, args.device, args.workers, args.download,
+          wandb_project=args.wandb_project, wandb_entity=args.wandb_entity,
+          wandb_mode=args.wandb_mode, run_name=args.run_name)
 
 
 if __name__ == "__main__":

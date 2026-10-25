@@ -1,5 +1,6 @@
 """Frozen CLIP with hyperbolic Q/V adapters and visual-prototype calibration."""
 from contextlib import nullcontext
+from pathlib import Path
 
 import open_clip
 import torch
@@ -11,13 +12,15 @@ from models.prototypes import PrototypeClassifier, standardize
 
 BACKBONE = "ViT-B-16"
 PRETRAINED = "laion400m_e32"
+LOCAL_CHECKPOINT = Path(__file__).resolve().parents[1] / "checkpoints" / "open_clip_pytorch_model.bin"
 
 
 class HypCLNet(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.clip, _, _ = open_clip.create_model_and_transforms(
-            BACKBONE, pretrained=PRETRAINED
+            BACKBONE,
+            pretrained=str(LOCAL_CHECKPOINT) if LOCAL_CHECKPOINT.is_file() else PRETRAINED,
         )
         self.tokenizer = open_clip.get_tokenizer(BACKBONE)
         self.clip.requires_grad_(False)

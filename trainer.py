@@ -10,6 +10,7 @@ import torch
 
 from utils import factory
 from utils.data_manager import DataManager
+from utils.tracking import ExperimentTracker
 from utils.toolkit import (
     BATCH_SIZE,
     CLASS_ORDER_SEED,
@@ -19,7 +20,8 @@ from utils.toolkit import (
 )
 
 
-def train(config, data_root, output, device="cuda:0", workers=16, download=False):
+def train(config, data_root, output, device="cuda:0", workers=16, download=False, *,
+          wandb_project="hypcli", wandb_entity=None, wandb_mode="online", run_name=None):
     device = torch.device(device)
     if device.type not in ("cpu", "cuda"):
         raise ValueError("Only CPU and CUDA devices are supported")
@@ -38,6 +40,7 @@ def train(config, data_root, output, device="cuda:0", workers=16, download=False
         ],
         force=True,
     )
+    tracker = None
     try:
         logging.info("Config: %s", asdict(config))
         logging.info(
@@ -65,10 +68,16 @@ def train(config, data_root, output, device="cuda:0", workers=16, download=False
             },
         )
         logging.info("Training started")
-        result = _train(config, data_root, device, workers, download)
+        tracker = ExperimentTracker(config, output, project=wandb_project,
+                                    entity=wandb_entity, mode=wandb_mode, name=run_name)
+        result = _train(config, data_root, device, workers, download, tracker)
+        tracker.complete(result)
     except BaseException:
         logging.exception("Training failed")
+        if tracker is not None:
+            tracker.finish(exit_code=1)
         raise
+    tracker.finish()
     logging.info(
         "Training completed: average=%.4f, final=%.2f, elapsed=%.1fs",
         result["average"],
@@ -78,12 +87,14 @@ def train(config, data_root, output, device="cuda:0", workers=16, download=False
     return result
 
 
-def _train(config, data_root, device, workers, download):
+def _train(config, data_root, device, workers, download, tracker=None):
     started = time.time()
     set_seed()
     data_manager = DataManager(config, data_root, download)
     logging.info("Class order: %s", data_manager._class_order)
     model = factory.get_model(config, device, workers)
+    if tracker is not None:
+        model.metric_logger = tracker.log_epoch
     curve, stages = [], []
     for task in range(data_manager.nb_tasks):
         model.incremental_train(data_manager)
@@ -102,6 +113,9 @@ def _train(config, data_root, device, workers, download):
             "stages": stages,
             "elapsed_seconds": time.time() - started,
         }
+        if tracker is not None:
+            tracker.log_task(task=task + 1, seen_classes=model._total_classes,
+                             metrics=metrics, average=result["average"])
         logging.info("Task %d metrics: %s", task + 1, metrics)
         logging.info(
             "Task %d complete: top1=%.2f, average=%.4f; curve=%s",
